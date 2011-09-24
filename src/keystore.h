@@ -15,9 +15,27 @@ protected:
 public:
     virtual bool AddKey(const CKey& key) =0;
     virtual bool HaveKey(const CBitcoinAddress &address) const =0;
-    virtual bool GetKey(const CBitcoinAddress &address, CKey& keyOut) const =0;
+    virtual bool RemoveKey(const CBitcoinAddress &address) =0;
+    virtual bool GetKey(const CBitcoinAddress &address, CKey& keyOut) const 
+    {
+        CSecret vchSecret;
+        if (!GetSecret(address, vchSecret))
+            return false;
+        if (!keyOut.SetSecret(vchSecret))
+            return false;
+        return true;
+    }
+    virtual void GetKeys(std::set<CBitcoinAddress> &setAddress) const =0;
     virtual bool GetPubKey(const CBitcoinAddress &address, std::vector<unsigned char>& vchPubKeyOut) const;
     virtual std::vector<unsigned char> GenerateNewKey();
+    virtual bool GetSecret(const CBitcoinAddress &address, CSecret& vchSecret) const
+    {
+        CKey key;
+        if (!GetKey(address, key))
+            return false;
+        vchSecret = key.GetSecret();
+        return true;
+    }
 };
 
 typedef std::map<CBitcoinAddress, CSecret> KeyMap;
@@ -36,14 +54,28 @@ public:
             result = (mapKeys.count(address) > 0);
         return result;
     }
-    bool GetKey(const CBitcoinAddress &address, CKey& keyOut) const
+    bool RemoveKey(const CBitcoinAddress &address);
+    void GetKeys(std::set<CBitcoinAddress> &setAddress) const
+    {
+        setAddress.clear();
+        CRITICAL_BLOCK(cs_KeyStore)
+        {
+            KeyMap::const_iterator mi = mapKeys.begin();
+            while (mi != mapKeys.end())
+            {
+                setAddress.insert((*mi).first);
+                mi++;
+            }
+        }
+    }
+    bool GetSecret(const CBitcoinAddress &address, CSecret &vchSecret) const
     {
         CRITICAL_BLOCK(cs_KeyStore)
         {
             KeyMap::const_iterator mi = mapKeys.find(address);
             if (mi != mapKeys.end())
             {
-                keyOut.SetSecret((*mi).second);
+                vchSecret = (*mi).second;
                 return true;
             }
         }
@@ -106,6 +138,7 @@ public:
     virtual bool AddCryptedKey(const std::vector<unsigned char> &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     std::vector<unsigned char> GenerateNewKey();
     bool AddKey(const CKey& key);
+    bool RemoveKey(const CBitcoinAddress &address);
     bool HaveKey(const CBitcoinAddress &address) const
     {
         CRITICAL_BLOCK(cs_KeyStore)
@@ -115,8 +148,23 @@ public:
             return mapCryptedKeys.count(address) > 0;
         }
     }
-    bool GetKey(const CBitcoinAddress &address, CKey& keyOut) const;
+    bool GetSecret(const CBitcoinAddress &address, CSecret& vchSecret) const;
     bool GetPubKey(const CBitcoinAddress &address, std::vector<unsigned char>& vchPubKeyOut) const;
+    void GetKeys(std::set<CBitcoinAddress> &setAddress) const
+    {
+        if (!IsCrypted())
+        {
+            CBasicKeyStore::GetKeys(setAddress);
+            return;
+        }
+        setAddress.clear();
+        CryptedKeyMap::const_iterator mi = mapCryptedKeys.begin();
+        while (mi != mapCryptedKeys.end())
+        {
+            setAddress.insert((*mi).first);
+            mi++;
+        }
+    }
 };
 
 #endif

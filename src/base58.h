@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include "bignum.h"
+#include "key.h"
 
 static const char* pszBase58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -238,19 +239,17 @@ public:
     bool operator> (const CBase58Data& b58) const { return CompareTo(b58) >  0; }
 };
 
-
 class CBitcoinAddress : public CBase58Data
 {
 public:
-    bool SetHash160(const uint160& hash160)
+    void SetHash160(const uint160& hash160)
     {
         SetData(fTestNet ? 111 : 0, &hash160, 20);
-        return true;
     }
 
-    bool SetPubKey(const std::vector<unsigned char>& vchPubKey)
+    void SetPubKey(const std::vector<unsigned char>& vchPubKey)
     {
-        return SetHash160(Hash160(vchPubKey));
+        SetHash160(Hash160(vchPubKey));
     }
 
     bool IsValid() const
@@ -259,15 +258,15 @@ public:
         bool fExpectTestNet = false;
         switch(nVersion)
         {
-            case 0:
-                break;
+        case 0:
+            break;
 
-            case 111:
-                fExpectTestNet = true;
-                break;
+        case 111:
+            fExpectTestNet = true;
+            break;
 
-            default:
-                return false;
+        default:
+            return false;
         }
         return fExpectTestNet == fTestNet && vchData.size() == nExpectedSize;
     }
@@ -303,6 +302,135 @@ public:
         memcpy(&hash160, &vchData[0], 20);
         return hash160;
     }
+};
+
+// THIS TEMPLATE DOESN'T BELONG HERE... but it doesn't clearly belong in any file that exists either.
+// TBD where it goes.
+void PBKDF2(const char P[],int Plen, const char S[], int Slen, int c,int dkLen, unsigned long* T);
+
+
+class CBitcoinSecret : public CBase58Data
+{
+public:
+    void SetSecret(const CSecret& vchSecret)
+    {
+        SetData(fTestNet ? 239 : 128, &vchSecret[0], vchSecret.size());
+    }
+
+    CSecret GetSecret()
+    {
+        CSecret vchSecret;
+        vchSecret.resize(vchData.size());
+        memcpy(&vchSecret[0], &vchData[0], vchData.size());
+        return vchSecret;
+    }
+
+    bool IsValid() const
+    {
+        int nExpectedSize = 32;
+        bool fExpectTestNet = false;
+        switch(nVersion)
+        {
+        case 128:
+            break;
+
+        case 239:
+            fExpectTestNet = true;
+            break;
+
+        default:
+            return false;
+        }
+        return fExpectTestNet == fTestNet && vchData.size() == nExpectedSize;
+    }
+
+    CBitcoinSecret(const CSecret& vchSecret)
+    {
+        SetSecret(vchSecret);
+    }
+
+    CBitcoinSecret()
+    {
+    }
+
+    bool SetString(const std::string& strAddress) 
+    {
+        return SetString(strAddress.c_str());
+    }
+
+
+    bool SetString(const char *psz)	
+    {
+        int nSecretLength = strlen(psz);
+        if (nSecretLength == 22 || nSecretLength == 26)
+        {
+            if (psz[0] == 'S')
+            {
+                int i;
+                bool fMini = false;
+                for (i = 0; i < nSecretLength; i++)
+                {
+                    char c = psz[i];
+                    if (c < '1' || c > 'z') break;
+                    if (c > '9' && c < 'A') break;
+                    if (c > 'Z' && c < 'a') break;
+                    if (c == 'I' || c == 'l' || c == 'O') break;
+                }
+                if (i==nSecretLength)
+                {
+                    std::string strKeycheck(psz);
+                    strKeycheck += "?";
+                    uint256 hash;
+                    SHA256((unsigned char*)strKeycheck.c_str(), strKeycheck.size(), (unsigned char*)&hash);					
+                    if (*(hash.begin()) == 0)
+                        fMini=true;
+                    else if (*(hash.begin()) == 1)
+                    {
+                        int nIterations = 1;
+                        const int nIterationChoices = 81;
+                        int allowedIterations[nIterationChoices] = {1,1,1,2,2,2,3,3,4,5,6,7,8,10,11,13,16,19,23,27,32,38,45,54,64,76,
+                            91,108,128,152,181,215,256,304,362,431,512,609,724,861,1024,1218,1448,1722,2048,2435,
+                            2896,3444,4096,4871,5793,6889,8192,9742,11585,13777,16384,19484,23170,27554,32768,38968,
+                            46341,55109,65536,77936,92682,110218,131072,155872,185364,220436,262144,311744,370728,
+                            440872,524288,623487,741455,881744,1048576};
+
+                        unsigned char idx = hash.begin()[1];
+                        
+                        if (idx > nIterationChoices) return false;
+                        nIterations = allowedIterations[idx];
+
+                        unsigned long T[512];
+                        memset(&T, 0, sizeof(T));
+                        PBKDF2(psz, nSecretLength, "Satoshi Nakamoto", 16, nIterations, 32, T);
+                        // avoid endianness problems
+
+                        unsigned char key[32];						
+                        for (int i=0,keyidx=0; i<8; i++) {
+                            key[keyidx++]=(T[i]) & 0xff;
+                            key[keyidx++]=(T[i]>>8) & 0xff;
+                            key[keyidx++]=(T[i]>>16) & 0xff;
+                            key[keyidx++]=(T[i]>>24) & 0xff;
+                        }
+
+                        SetData(fTestNet ? 239 : 128, key, 32);
+                        fMini = true;
+                    }
+                    if (fMini)
+                    {
+                        uint256 hash;
+                        SHA256((unsigned char*)psz, nSecretLength, (unsigned char*)&hash);
+                        SetData(fTestNet ? 239 : 128, &hash, 32);
+
+                        return true;
+                    }
+                }
+            }
+        }
+        return CBase58Data::SetString(psz);
+
+    }
+
+
 };
 
 #endif

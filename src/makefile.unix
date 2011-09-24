@@ -71,12 +71,15 @@ OBJS= \
     obj/main.o \
     obj/net.o \
     obj/protocol.o \
+    obj/wallet.o \
+    obj/rpcdump.o \
     obj/rpc.o \
     obj/script.o \
     obj/util.o \
     obj/wallet.o \
     cryptopp/obj/sha.o \
-    cryptopp/obj/cpu.o
+    cryptopp/obj/cpu.o \
+    cryptopp/obj/pbkdf2.o
 
 
 all: bitcoin

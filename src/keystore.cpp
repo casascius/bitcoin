@@ -29,7 +29,7 @@ bool CKeyStore::GetPubKey(const CBitcoinAddress &address, std::vector<unsigned c
 bool CBasicKeyStore::AddKey(const CKey& key)
 {
     CRITICAL_BLOCK(cs_KeyStore)
-        mapKeys[key.GetAddress()] = key.GetSecret();
+        mapKeys[CBitcoinAddress(key.GetPubKey())] = key.GetSecret();
     return true;
 }
 
@@ -43,6 +43,13 @@ bool CCryptoKeyStore::SetCrypted()
             return false;
         fUseCrypto = true;
     }
+    return true;
+}
+
+bool CBasicKeyStore::RemoveKey(const CBitcoinAddress& address)
+{
+    CRITICAL_BLOCK(cs_KeyStore)
+        mapKeys.erase(address);
     return true;
 }
 
@@ -103,6 +110,17 @@ bool CCryptoKeyStore::AddKey(const CKey& key)
     return true;
 }
 
+bool CCryptoKeyStore::RemoveKey(const CBitcoinAddress& address)
+{
+    CRITICAL_BLOCK(cs_KeyStore)
+    {
+        if (!IsCrypted())
+            return CBasicKeyStore::RemoveKey(address);
+        mapCryptedKeys.erase(address);
+    }
+    return true;
+}
+
 
 bool CCryptoKeyStore::AddCryptedKey(const std::vector<unsigned char> &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret)
 {
@@ -116,23 +134,19 @@ bool CCryptoKeyStore::AddCryptedKey(const std::vector<unsigned char> &vchPubKey,
     return true;
 }
 
-bool CCryptoKeyStore::GetKey(const CBitcoinAddress &address, CKey& keyOut) const
+bool CCryptoKeyStore::GetSecret(const CBitcoinAddress &address, CSecret& vchSecretOut) const
 {
     CRITICAL_BLOCK(cs_KeyStore)
     {
         if (!IsCrypted())
-            return CBasicKeyStore::GetKey(address, keyOut);
+            return CBasicKeyStore::GetSecret(address, vchSecretOut);
 
         CryptedKeyMap::const_iterator mi = mapCryptedKeys.find(address);
         if (mi != mapCryptedKeys.end())
         {
             const std::vector<unsigned char> &vchPubKey = (*mi).second.first;
             const std::vector<unsigned char> &vchCryptedSecret = (*mi).second.second;
-            CSecret vchSecret;
-            if (!DecryptSecret(vMasterKey, vchCryptedSecret, Hash(vchPubKey.begin(), vchPubKey.end()), vchSecret))
-                return false;
-            keyOut.SetSecret(vchSecret);
-            return true;
+            return DecryptSecret(vMasterKey, vchCryptedSecret, Hash(vchPubKey.begin(), vchPubKey.end()), vchSecretOut);
         }
     }
     return false;

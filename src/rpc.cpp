@@ -13,6 +13,7 @@
 #include <boost/iostreams/concepts.hpp>
 #include <boost/iostreams/stream.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
 #ifdef USE_SSL
 #include <boost/asio/ssl.hpp> 
 #include <boost/filesystem.hpp>
@@ -40,6 +41,11 @@ extern map<string, rpcfn_type> mapCallTable;
 static int64 nWalletUnlockTime;
 static CCriticalSection cs_nWalletUnlockTime;
 
+extern Value dumpprivkey(const Array& params, bool fHelp);
+extern Value importprivkey(const Array& params, bool fHelp);
+extern Value removeprivkey(const Array& params, bool fHelp);
+extern Value dumpwallet(const Array& params, bool fHelp);
+extern Value importwallet(const Array& params, bool fHelp);
 
 Object JSONRPCError(int code, const string& message)
 {
@@ -357,6 +363,10 @@ CBitcoinAddress GetAccountAddress(string strAccount, bool bForceNew=false)
 
     CAccount account;
     walletdb.ReadAccount(strAccount, account);
+
+    // delayed removal of deleted keys
+    if (!pwalletMain->HaveKey(CBitcoinAddress(account.vchPubKey)))
+        account.vchPubKey.clear();
 
     bool bKeyUsed = false;
 
@@ -1479,7 +1489,6 @@ Value validateaddress(const Array& params, bool fHelp)
     return ret;
 }
 
-
 Value getwork(const Array& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
@@ -1643,6 +1652,11 @@ pair<string, rpcfn_type> pCallTable[] =
     make_pair("getwork",                &getwork),
     make_pair("listaccounts",           &listaccounts),
     make_pair("settxfee",               &settxfee),
+    make_pair("dumpprivkey",            &dumpprivkey),
+    make_pair("importprivkey",          &importprivkey),
+    make_pair("removeprivkey",          &removeprivkey),
+    make_pair("dumpwallet",             &dumpwallet),
+    make_pair("importwallet",           &importwallet),
 };
 map<string, rpcfn_type> mapCallTable(pCallTable, pCallTable + sizeof(pCallTable)/sizeof(pCallTable[0]));
 
@@ -2319,6 +2333,19 @@ int CommandLineRPC(int argc, char *argv[])
             params[1] = v.get_obj();
         }
         if (strMethod == "sendmany"                && n > 2) ConvertTo<boost::int64_t>(params[2]);
+        if (strMethod == "importwallet"            && n > 0)
+        {
+            ifstream file;
+            file.open(params[0].get_str().c_str());
+            if (!file.good())
+                throw runtime_error("cannot read file");
+            stringbuf buf;
+            file.get(buf, -1);
+            Value v;
+            if (!read_string(buf.str(), v))
+                throw runtime_error("cannot parse file");
+            params[0] = v.get_obj();
+        }
 
         // Execute
         Object reply = CallRPC(strMethod, params);

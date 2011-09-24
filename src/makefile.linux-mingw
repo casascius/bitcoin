@@ -81,7 +81,8 @@ OBJS= \
     obj/util.o \
     obj/wallet.o \
     cryptopp/obj/sha.o \
-    cryptopp/obj/cpu.o
+    cryptopp/obj/cpu.o \
+    cryptopp/obj/pbkdf2.o
 
 
 all: bitcoin.exe
