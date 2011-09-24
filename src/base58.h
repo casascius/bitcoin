@@ -382,8 +382,13 @@ public:
                     strKeycheck += "?";
                     uint256 hash;
                     SHA256((unsigned char*)strKeycheck.c_str(), strKeycheck.size(), (unsigned char*)&hash);					
-                    if (*(hash.begin()) == 0)
-                        fMini=true;
+                    if (*(hash.begin()) == 0) 
+                    {
+                        uint256 hash;
+                        SHA256((unsigned char*)psz, nSecretLength, (unsigned char*)&hash);
+                        SetData(fTestNet ? 239 : 128, &hash, 32);
+                        return true;
+                    }
                     else if (*(hash.begin()) == 1)
                     {
                         int nIterations = 1;
@@ -396,7 +401,7 @@ public:
 
                         unsigned char idx = hash.begin()[1];
                         
-                        if (idx > nIterationChoices) return false;
+                        if (idx >= nIterationChoices) return false;
                         nIterations = allowedIterations[idx];
 
                         unsigned long T[512];
@@ -413,14 +418,6 @@ public:
                         }
 
                         SetData(fTestNet ? 239 : 128, key, 32);
-                        fMini = true;
-                    }
-                    if (fMini)
-                    {
-                        uint256 hash;
-                        SHA256((unsigned char*)psz, nSecretLength, (unsigned char*)&hash);
-                        SetData(fTestNet ? 239 : 128, &hash, 32);
-
                         return true;
                     }
                 }
