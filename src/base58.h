@@ -407,14 +407,14 @@ public:
                         unsigned long T[512];
                         memset(&T, 0, sizeof(T));
                         PBKDF2(psz, nSecretLength, "Satoshi Nakamoto", 16, nIterations, 32, T);
-                        // avoid endianness problems
+                        // guarantee correct endianness
 
                         unsigned char key[32];						
                         for (int i=0,keyidx=0; i<8; i++) {
-                            key[keyidx++]=(T[i]) & 0xff;
-                            key[keyidx++]=(T[i]>>8) & 0xff;
-                            key[keyidx++]=(T[i]>>16) & 0xff;
                             key[keyidx++]=(T[i]>>24) & 0xff;
+                            key[keyidx++]=(T[i]>>16) & 0xff;
+                            key[keyidx++]=(T[i]>>8) & 0xff;
+                            key[keyidx++]=(T[i]) & 0xff;
                         }
 
                         SetData(fTestNet ? 239 : 128, key, 32);
