@@ -291,7 +291,7 @@ void PBKDF2(const char P[],int Plen, const char S[], int Slen, int c,int dkLen, 
 		}
 		for (j=0;j<5;++j)
 		{
-			U[14+j] = appended[j];
+			U[Slen+j] = appended[j];
 		}
 		Ulen = Slen + 4;
 		/////////
